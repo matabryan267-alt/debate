@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debate IA - Sistema Corregido</title>
+    <title>Debate IA - Ultra Rápido</title>
     <style>
-        body { background: #0f0f0f; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .box { background: #1a1a1a; padding: 25px; border-radius: 15px; width: 100%; max-width: 450px; border-bottom: 4px solid #007bff; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        body { background: #0f0f0f; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .box { background: #1a1a1a; padding: 25px; border-radius: 15px; width: 100%; max-width: 450px; border-bottom: 4px solid #007bff; text-align: center; }
         
         #btn-main { 
             background: #007bff; color: white; border: none; padding: 15px 30px; 
             font-size: 16px; border-radius: 50px; cursor: pointer; font-weight: bold; margin: 15px 0;
-            transition: all 0.3s ease;
+            width: 100%;
         }
         
         .active { background: #ff4444 !important; animation: pulse 1.5s infinite; }
@@ -19,187 +19,153 @@
 
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(255, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); } }
         
+        /* Control de Velocidad */
+        .control-group { margin: 15px 0; text-align: left; background: #252525; padding: 10px; border-radius: 8px; }
+        .control-group label { font-size: 12px; color: #aaa; display: block; margin-bottom: 5px; }
+        input[type=range] { width: 100%; cursor: pointer; }
+
         #logs { 
-            width: 100%; max-width: 450px; height: 300px; background: #000; 
+            width: 100%; max-width: 450px; height: 250px; background: #000; 
             margin-top: 20px; padding: 15px; border-radius: 10px; overflow-y: auto; 
-            font-family: 'Courier New', monospace; font-size: 13px; border: 1px solid #333;
+            font-family: monospace; font-size: 13px; border: 1px solid #333;
             display: flex; flex-direction: column-reverse;
         }
-        .status-msg { color: #00ff88; font-weight: bold; text-transform: uppercase; }
-        .log-ia { color: #00d4ff; margin-bottom: 5px; }
-        .log-user { color: #aaa; margin-bottom: 5px; }
-        .log-system { color: #ffaa00; font-style: italic; }
+        .status-msg { color: #00ff88; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="box">
-        <h2>Control de Debate IA</h2>
-        <p>Estado: <span id="st-txt" class="status-msg">DESCONECTADO</span></p>
-        <button id="btn-main" onclick="toggleSistema()">INICIAR SISTEMA</button>
-        <p style="font-size: 12px; color: #888;">Comandos: <b>"Vamos a ver"</b> para grabar | <b>"Bueno"</b> para enviar.</p>
+        <h2>Debate IA Fast</h2>
+        <p>Estado: <span id="st-txt" class="status-msg">APAGADO</span></p>
+        
+        <div class="control-group">
+            <label>Velocidad de voz: <span id="speed-val">1.2</span>x</label>
+            <input type="range" id="speed-ctrl" min="0.5" max="2" step="0.1" value="1.2" oninput="document.getElementById('speed-val').innerText = this.value">
+        </div>
+
+        <button id="btn-main" onclick="toggleSistema()">ENCENDER</button>
     </div>
 
-    <div id="logs"><div>> Esperando interacción...</div></div>
+    <div id="logs"><div>> Sistema listo...</div></div>
 
     <script>
-        // Nota: En producción, las API Keys deben manejarse desde el Backend.
         const API_KEY = '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';
         const MODELO = "llama-3.1-8b-instant";
 
         let recognition;
         let isSystemOn = false;
         let modoDebateActivo = false;
-        let bufferTexto = '';
         let isSpeaking = false;
+        let buffer = '';
 
         const btnMain = document.getElementById('btn-main');
         const statusTxt = document.getElementById('st-txt');
+        const speedCtrl = document.getElementById('speed-ctrl');
 
-        function addLog(msg, type = "system") {
+        function addLog(msg, color = "#fff") {
             const l = document.getElementById('logs');
-            const color = type === "ia" ? "#00d4ff" : (type === "user" ? "#aaa" : "#ffaa00");
             l.insertAdjacentHTML('afterbegin', `<div style="color:${color}">> ${msg}</div>`);
         }
 
         function initSpeech() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                alert("Navegador no compatible. Usa Chrome.");
-                return null;
-            }
             const rec = new SpeechRecognition();
             rec.lang = 'es-ES';
             rec.continuous = true;
-            rec.interimResults = false; // Cambiado a false para mayor precisión en comandos
+            rec.interimResults = false;
 
             rec.onstart = () => {
-                statusTxt.innerText = modoDebateActivo ? "GRABANDO DEBATE..." : "ESCUCHANDO...";
-                addLog(modoDebateActivo ? "Micrófono grabando..." : "Esperando comando de inicio...");
+                statusTxt.innerText = modoDebateActivo ? "GRABANDO..." : "ESCUCHANDO...";
             };
 
             rec.onresult = (event) => {
-                const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                const text = event.results[event.results.length - 1][0].transcript.toLowerCase();
                 
-                // 1. Lógica de Activación
-                if (!modoDebateActivo && transcript.includes("vamos a ver")) {
+                if (!modoDebateActivo && text.includes("vamos a ver")) {
                     modoDebateActivo = true;
-                    bufferTexto = '';
-                    statusTxt.innerText = "GRABANDO DEBATE...";
+                    buffer = '';
                     btnMain.classList.add('active');
-                    addLog("🔴 MODO DEBATE ACTIVADO", "system");
+                    statusTxt.innerText = "GRABANDO...";
+                    addLog("🔴 Grabando debate...", "#ff4444");
                     return;
                 }
 
-                // 2. Lógica de Envío
-                if (modoDebateActivo && transcript.includes("bueno")) {
+                if (modoDebateActivo && text.includes("bueno")) {
                     modoDebateActivo = false;
                     btnMain.classList.remove('active');
                     btnMain.classList.add('processing');
-                    addLog("Enviando a IA...", "system");
-                    enviarAIA(bufferTexto);
-                    bufferTexto = '';
+                    statusTxt.innerText = "PROCESANDO...";
+                    enviarAIA(buffer);
                     return;
                 }
 
-                // 3. Acumulación de texto
                 if (modoDebateActivo) {
-                    bufferTexto += transcript + ". ";
-                    addLog("Escuchado: " + transcript, "user");
+                    buffer += text + ". ";
+                    addLog("Voz: " + text, "#aaa");
                 }
             };
 
-            rec.onerror = (e) => {
-                if(e.error !== 'no-speech') addLog("Error: " + e.error, "system");
-            };
-
-            rec.onend = () => {
-                // Reiniciar automáticamente solo si el sistema debe estar encendido y la IA no está hablando
-                if (isSystemOn && !isSpeaking) {
-                    recognition.start();
-                }
-            };
-
+            rec.onend = () => { if (isSystemOn && !isSpeaking) rec.start(); };
             return rec;
         }
 
         function toggleSistema() {
             if (!isSystemOn) {
                 isSystemOn = true;
-                btnMain.innerText = "DETENER SISTEMA";
-                statusTxt.innerText = "CONECTANDO...";
+                btnMain.innerText = "APAGAR";
                 if (!recognition) recognition = initSpeech();
                 recognition.start();
             } else {
-                detenerTodo();
+                isSystemOn = false;
+                recognition.stop();
+                window.speechSynthesis.cancel();
+                btnMain.innerText = "ENCENDER";
+                btnMain.classList.remove('active', 'processing');
+                statusTxt.innerText = "APAGADO";
             }
-        }
-
-        function detenerTodo() {
-            isSystemOn = false;
-            modoDebateActivo = false;
-            if (recognition) recognition.stop();
-            window.speechSynthesis.cancel();
-            btnMain.innerText = "INICIAR SISTEMA";
-            btnMain.classList.remove('active', 'processing');
-            statusTxt.innerText = "DESCONECTADO";
-            addLog("Sistema apagado.");
         }
 
         async function enviarAIA(texto) {
-            if (!texto.trim()) {
-                addLog("No se detectó discurso. Reiniciando...", "system");
-                finalizarProcesamiento();
-                return;
-            }
-
             try {
                 const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${API_KEY}`
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
                     body: JSON.stringify({
                         model: MODELO,
                         messages: [
-                            { role: "system", content: "Eres un debatiente experto. Responde de forma muy breve (máximo 2 frases), sarcástica y directa en español." },
+                            { role: "system", content: "Responde de forma ultra-directa, al grano y sin introducciones. pero tambien de forma muy eztructurada." },
                             { role: "user", content: texto }
-                        ]
+                        ],
+                        max_tokens: 50 // Limita la respuesta físicamente para mayor velocidad
                     })
                 });
-
                 const data = await r.json();
                 const respuesta = data.choices[0].message.content;
-                addLog("IA: " + respuesta, "ia");
+                addLog("IA: " + respuesta, "#00d4ff");
                 hablar(respuesta);
             } catch (e) {
-                addLog("Error en API: " + e.message, "system");
-                finalizarProcesamiento();
+                addLog("Error API", "#ff4444");
+                isSpeaking = false;
+                if(isSystemOn) recognition.start();
             }
         }
 
         function hablar(mensaje) {
             isSpeaking = true;
-            recognition.stop(); // 🛑 Detenemos el micro para que no se escuche a sí misma
+            recognition.stop();
             
             const utterance = new SpeechSynthesisUtterance(mensaje);
             utterance.lang = 'es-ES';
-            utterance.rate = 1.0;
+            // 🟢 AQUÍ SE APLICA LA VELOCIDAD ELEGIDA
+            utterance.rate = parseFloat(speedCtrl.value); 
 
             utterance.onend = () => {
                 isSpeaking = false;
-                finalizarProcesamiento();
+                btnMain.classList.remove('processing');
+                if (isSystemOn) recognition.start();
             };
-
             window.speechSynthesis.speak(utterance);
-        }
-
-        function finalizarProcesamiento() {
-            btnMain.classList.remove('processing');
-            if (isSystemOn) {
-                recognition.start(); // 🎤 Volvemos a escuchar tras terminar de hablar
-            }
         }
     </script>
 </body>
